@@ -63,7 +63,8 @@ class ExamAdmin(admin.ModelAdmin):
     change_list_template = 'admin/exam/exam/change_list.html'
 
     list_display = ('name', 'start_time', 'end_time', 'duration_minutes',
-                    'total_questions', 'total_score', 'candidate_count', 'created_at')
+                    'total_questions', 'total_score', 'candidate_count',
+                    'paper_status', 'created_at')
     list_filter = ('start_time',)
     search_fields = ('name',)
     date_hierarchy = 'start_time'
@@ -151,12 +152,60 @@ class ExamAdmin(admin.ModelAdmin):
 
     candidate_count.short_description = '考生人数'
 
-    # ── 保存校验（含子章节递归查询，与组卷逻辑一致） ──
-    def save_model(self, request, obj, form, change):
-        from questions.models import Question
+    # ── 组卷状态显示 ──
+    def paper_status(self, obj):
+        count = obj.exam_papers.count()
+        if count == 0:
+            return '❌ 未组卷'
+        return f'✅ 已组卷（{count}份）'
 
+    paper_status.short_description = '组卷状态'
+
+    # ── 注册 Admin Action ──
+    actions = ['generate_papers']
+
+    @admin.action(description='📄 生成试卷（为当前考试所有考生生成试卷）')
+    def generate_papers(self, request, queryset):
+        from exam.services.paper_generator import PaperGenerator, PaperGenerationError
+
+        for exam in queryset:
+            if exam.exam_papers.exists():
+                self.message_user(
+                    request,
+                    f'考试「{exam.name}」已组卷，如需重新组卷请先清空现有试卷',
+                    level='WARNING'
+                )
+                continue
+
+            try:
+                generator = PaperGenerator(exam)
+                generator.generate()
+                self.message_user(
+                    request,
+                    f'✅ 考试「{exam.name}」组卷成功！'
+                    f'共 {exam.exam_papers.count()} 份试卷',
+                    level='SUCCESS'
+                )
+            except PaperGenerationError as e:
+                self.message_user(
+                    request,
+                    f'❌ 考试「{exam.name}」组卷失败：{str(e)}',
+                    level='ERROR'
+                )
+
+    # ─── save_model 只做保存，不做校验 ───
+    def save_model(self, request, obj, form, change):
+        """仅保存 Exam 主干，校验逻辑移至 save_related（确保 inline 已保存）"""
         super().save_model(request, obj, form, change)
 
+    # ─── save_related 做校验（此时 inline 已保存） ───
+    def save_related(self, request, form, formsets, change):
+        """保存 inline 后执行校验"""
+        from questions.models import Question
+
+        super().save_related(request, form, formsets, change)
+
+        obj = form.instance
         rules = list(obj.question_rules.all().select_related('chapter', 'question_type'))
 
         if len(rules) == 0:
@@ -190,7 +239,7 @@ class ExamAdmin(admin.ModelAdmin):
                 f'（差额 {total_score_from_rules - obj.total_score} 分）'
             )
 
-        # ── 逐条校验：递归查找章节及所有子章节的题目（与 paper_generator 一致） ──
+        # ── 逐条校验：递归查找章节及所有子章节的题目 ──
         shortage_rules = []
         for r in rules:
             actual_count = self._count_questions_in_chapter_tree(
@@ -213,7 +262,7 @@ class ExamAdmin(admin.ModelAdmin):
 
         messages.success(request, '✅ 考试保存成功，待考生名单确认后触发组卷')
 
-    # ── 递归获取章节及其所有子章节的题目数量（与 paper_generator 一致） ──
+    # ── 递归获取章节及其所有子章节的题目数量 ──
     def _count_questions_in_chapter_tree(self, chapter, question_type):
         """统计指定章节及其所有子章节中某题型的题目数量"""
         from questions.models import Question, Chapter as ChapterModel
@@ -275,7 +324,6 @@ class ExamPaperQuestionInline(admin.TabularInline):
     def has_delete_permission(self, request, obj=None):
         return False
 
-
 @admin.register(ExamPaper)
 class ExamPaperAdmin(admin.ModelAdmin):
     list_display = ('id', 'exam', 'candidate', 'status', 'total_score',
@@ -283,8 +331,7 @@ class ExamPaperAdmin(admin.ModelAdmin):
     list_filter = ('status', 'exam')
     search_fields = ('candidate__name', 'candidate__id_card')
     inlines = [ExamPaperQuestionInline]
-    readonly_fields = ('exam', 'candidate', 'status', 'total_score',
-                       'started_at', 'submitted_at')
+
     fieldsets = (
         ('试卷信息', {
             'fields': ('exam', 'candidate', 'status',
@@ -295,6 +342,26 @@ class ExamPaperAdmin(admin.ModelAdmin):
             'description': '作答统计（自动计算）',
         }),
     )
+
+    # ── 永远只读的字段（方法/关系，不可编辑） ──
+    readonly_fields = ('exam', 'candidate', 'answer_summary')
+
+    def get_readonly_fields(self, request, obj=None):
+        """
+        权限控制：
+        - 超级管理员 / 有 change_exampaper 权限 → status/score/时间可编辑
+        - 其他用户 → 全只读
+        """
+        base_readonly = self.readonly_fields
+        if request.user.is_superuser or request.user.has_perm('exam.change_exampaper'):
+            return base_readonly
+        return base_readonly + ('status', 'total_score', 'started_at', 'submitted_at')
+
+    def has_add_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
 
     def answer_summary(self, obj):
         answers = Answer.objects.filter(exam_paper_question__exam_paper=obj)
@@ -307,4 +374,7 @@ class ExamPaperAdmin(admin.ModelAdmin):
     answer_summary.short_description = '作答统计'
 
     def has_add_permission(self, request, obj=None):
-        return False
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser

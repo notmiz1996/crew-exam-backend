@@ -111,6 +111,11 @@ class Candidate(models.Model):
     name = models.CharField('姓名', max_length=64)
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
 
+    @property
+    def is_authenticated(self):
+        """DRF 权限检查需要（非 Django auth User，但登录后视为已认证）"""
+        return True
+
     class Meta:
         verbose_name = '考生'
         verbose_name_plural = '考生'
@@ -267,22 +272,22 @@ class Answer(models.Model):
         status = '未作答' if self.selected_answer is None else self.selected_answer
         return f'{self.exam_paper_question} - {status}'
 
-    def _check_readonly_before_save(self):
-        """
-        已组卷考试禁止修改（P1-004 模型层只读保护）
-        检查条件：只要该考试存在任何 ExamPaper 记录，即视为已组卷
-        """
-        if self.pk is None:
-            return  # 新建考试，允许保存
-
-        if ExamPaper.objects.filter(exam=self).exists():
-            raise ValidationError(
-                f'考试「{self.name}」已组卷，不允许修改基本信息。'
-                '如需修改请先清空试卷记录。'
-            )
-
-    def save(self, *args, **kwargs):
-        """保存时先校验+只读检查，再保存"""
-        self.clean()
-        self._check_readonly_before_save()
-        super().save(*args, **kwargs)
+    # def _check_readonly_before_save(self):
+    #     """
+    #     已组卷考试禁止修改（P1-004 模型层只读保护）
+    #     检查条件：只要该考试存在任何 ExamPaper 记录，即视为已组卷
+    #     """
+    #     if self.pk is None:
+    #         return  # 新建考试，允许保存
+    #
+    #     if ExamPaper.objects.filter(exam=self).exists():
+    #         raise ValidationError(
+    #             f'考试「{self.name}」已组卷，不允许修改基本信息。'
+    #             '如需修改请先清空试卷记录。'
+    #         )
+    #
+    # def save(self, *args, **kwargs):
+    #     """保存时先校验+只读检查，再保存"""
+    #     self.clean()
+    #     self._check_readonly_before_save()
+    #     super().save(*args, **kwargs)

@@ -27,12 +27,18 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     # 第三方
     'rest_framework',
+    'drf_spectacular',  # ← 新增
+    'drf_spectacular_sidecar',  # ← 新增（离线 Swagger UI 资源）
     # 本地应用
     'questions',
     'exam',
+    # 跨域
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
+    # 跨域
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -100,6 +106,41 @@ REST_FRAMEWORK = {
     ],
     # 统一异常处理 — 不暴露内部堆栈
     'EXCEPTION_HANDLER': 'exam.utils.exception_handler.custom_exception_handler',
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+
+# ====== drf-spectacular 配置 ======
+SPECTACULAR_SETTINGS = {
+    'TITLE': '肇庆市船员履职技能大赛机考系统 API',
+    'DESCRIPTION': """
+船员履职技能大赛机考系统后端接口文档。
+
+## 认证方式
+- **Admin 端**：Django Session（通过 Admin 登录）
+- **考生端**：JWT（通过 `/api/exams/{id}/login/` 获取 token）
+  - 请求头：`Authorization: Bearer <token>`
+
+## 接口一览
+| 接口 | 说明 |
+|------|------|
+| `GET  /api/exams/` | 考试列表（公开） |
+| `POST /api/exams/{id}/login/` | 考生登录（公开） |
+| `GET  /api/exams/{id}/paper/` | 获取试卷（JWT） |
+| `POST .../answer/` | 提交答案（JWT） |
+| `GET  .../status/` | 考试状态（JWT） |
+| `POST .../submit/` | 交卷（JWT） |
+| `GET  .../result/` | 考试结果（JWT） |
+    """.strip(),
+    'VERSION': '1.0.0',
+    # 使用 sidecar 离线 Swagger UI（避免 CDN 加载慢）
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
+    # 中文
+    'SWAGGER_UI_SETTINGS': {
+        'lang': 'zh-cn',
+    },
 }
 
 # ====== 日志配置（§12 日志框架，P1-003） ======
@@ -142,3 +183,15 @@ def activate_wal(sender, connection, **kwargs):
             cursor.execute("PRAGMA journal_mode=WAL;")
 
 connection_created.connect(activate_wal)
+
+
+# CORS 配置（开发环境开放所有来源，生产环境请收紧）
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOW_HEADERS = [
+    'authorization',
+    'content-type',
+    'accept',
+    'origin',
+    'x-requested-with',
+]

@@ -59,10 +59,31 @@ def grade_paper(exam_paper: ExamPaper) -> float:
         question = epq.question
         qt_code = question.question_type.code
 
+        # ↓↓↓ 新增：每道题都打印状态 ↓↓↓
+        logger.info(
+            '  批改明细 | answer_id=%s sort_order=%s '
+            'selected=%r is_correct=%s qt_code=%s',
+            answer.id, epq.sort_order,
+            answer.selected_answer, answer.is_correct, qt_code,
+        )
+
         if answer.is_correct is not None:
+            logger.info('  → 跳过（is_correct 已存在）')
             total += answer.score
             continue
 
+        # ↓↓↓ 新增：打印选中的答案和原始答案 ↓↓↓
+        if qt_code == 'single_choice':
+            logger.info('  → 单选题: selected=%s original=%s options=%s',
+                        answer.selected_answer, epq.original_answer, epq.shuffled_options)
+        elif qt_code == 'judgment':
+            logger.info('  → 判断题: selected=%s original=%s options=%s',
+                        answer.selected_answer, epq.original_answer, epq.shuffled_options)
+        elif qt_code == 'multi_choice':
+            logger.info('  → 多选题: selected=%s original=%s options=%s',
+                        answer.selected_answer, epq.original_answer, epq.shuffled_options)
+
+        # ── 以下是原有批改逻辑 ──
         if qt_code == 'single_choice':
             is_correct, score = grade_single_choice(answer, epq)
         elif qt_code == 'multi_choice':
@@ -73,6 +94,9 @@ def grade_paper(exam_paper: ExamPaper) -> float:
             logger.warning('未知题型 | answer_id=%s code=%s', answer.id, qt_code)
             is_correct = False
             score = 0
+
+        # ↓↓↓ 新增：打印批改结果 ↓↓↓
+        logger.info('  → 批改结果: is_correct=%s score=%s', is_correct, score)
 
         answer.is_correct = is_correct
         answer.score = score
@@ -142,17 +166,24 @@ def grade_multi_choice(answer: Answer, epq) -> tuple[bool, int]:
     return is_correct, epq.score if is_correct else 0
 
 
+
 def grade_judgment(answer: Answer, epq) -> tuple[bool, int]:
-    """
-    批改判断题
-    """
     if answer.selected_answer is None:
         return False, 0
 
     shuffled_options = epq.shuffled_options
     original_options = epq.question.options
+    correct = epq.original_answer  # 可能是 "正确"(文本) 或 "A"(字母)
 
-    correct_text = map_letter_to_text(original_options, epq.original_answer)
+    # ── 如果 original_answer 是文本（如 "正确"），先转成字母 ──
+    if not (len(correct) == 1 and 'A' <= correct.upper() <= 'Z'):
+        for i, opt in enumerate(original_options):
+            opt_text = opt.split('. ', 1)[-1] if '. ' in opt else opt
+            if opt_text == correct:
+                correct = chr(ord('A') + i)
+                break
+
+    correct_text = map_letter_to_text(original_options, correct)
     selected_text = map_letter_to_text(shuffled_options, answer.selected_answer)
 
     if correct_text is None or selected_text is None:
@@ -161,3 +192,22 @@ def grade_judgment(answer: Answer, epq) -> tuple[bool, int]:
 
     is_correct = selected_text == correct_text
     return is_correct, epq.score if is_correct else 0
+# def grade_judgment(answer: Answer, epq) -> tuple[bool, int]:
+#     """
+#     批改判断题
+#     """
+#     if answer.selected_answer is None:
+#         return False, 0
+#
+#     shuffled_options = epq.shuffled_options
+#     original_options = epq.question.options
+#
+#     correct_text = map_letter_to_text(original_options, epq.original_answer)
+#     selected_text = map_letter_to_text(shuffled_options, answer.selected_answer)
+#
+#     if correct_text is None or selected_text is None:
+#         logger.warning('判断题映射失败 | answer_id=%s', answer.id)
+#         return False, 0
+#
+#     is_correct = selected_text == correct_text
+#     return is_correct, epq.score if is_correct else 0
