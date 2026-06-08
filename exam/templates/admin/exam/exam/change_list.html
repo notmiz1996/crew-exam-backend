@@ -1,0 +1,11 @@
+{% extends "admin/change_list.html" %}
+{% load i18n admin_urls %}
+
+{% block object-tools-items %}
+    <li>
+        <a href="{% url 'admin:exam_exam_import' %}" class="addlink" style="background: #417690;">
+            📥 批量导入
+        </a>
+    </li>
+    {{ block.super }}
+{% endblock %}

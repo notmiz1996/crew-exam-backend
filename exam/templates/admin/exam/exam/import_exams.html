@@ -1,0 +1,255 @@
+
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .import-container {
+            max-width: 960px;
+            margin: 20px auto;
+            padding: 24px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .import-container h2 {
+            margin-top: 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .sheet-tab {
+            display: inline-block;
+            background: #417690;
+            color: #fff !important;
+            padding: 4px 14px;
+            border-radius: 3px 3px 0 0;
+            font-weight: bold;
+            font-size: 13px;
+            margin-right: 2px;
+        }
+        .sheet-tab-inactive {
+            background: #ddd;
+            color: #666 !important;
+        }
+        .format-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 4px 0 16px;
+            font-size: 12px;
+        }
+        .format-table th, .format-table td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        .format-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .format-table tr:nth-child(even) {
+            background: #fafafa;
+        }
+        .format-table td {
+            max-width: 240px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .format-table td.num {
+            text-align: center;
+        }
+        .upload-section {
+            background: #f8f9fa;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            padding: 28px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .upload-section input[type="file"] {
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .upload-section .submit-btn {
+            display: inline-block;
+            padding: 10px 28px;
+            background: #417690;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .upload-section .submit-btn:hover {
+            background: #205067;
+        }
+        .note-box {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 4px;
+            padding: 12px 16px;
+            margin: 16px 0;
+            font-size: 13px;
+            color: #8c6e00;
+        }
+        .note-box strong {
+            color: #614700;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 16px;
+            color: #447e9b;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .col-desc {
+            display: inline-block;
+            background: #e8f4f8;
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-size: 11px;
+            color: #1a5a7a;
+        }
+        h3.sheet-title {
+            margin: 20px 0 4px;
+            font-size: 15px;
+            color: #333;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="import-container">
+    <h2>📥 批量导入考试（含出题规则 + 考生名单）</h2>
+
+    <div class="note-box">
+        <strong>⚠️ 导入规则：</strong>
+        <ul style="margin: 6px 0 0 16px; padding: 0;">
+            <li>一个 xlsx 文件对应 <strong>同一场考试</strong>，三个 Sheet 缺一不可</li>
+            <li><strong>考试名称相同</strong> → 已存在的考试跳过（不覆盖）</li>
+            <li><strong>出题规则支持两种格式</strong>：透视表（推荐）或旧明细表（自动识别）</li>
+            <li>仅支持 <code>.xlsx</code> 格式</li>
+        </ul>
+    </div>
+
+    <h3 class="sheet-title"><span class="sheet-tab">① 考试基本信息</span>
+        <span class="sheet-tab sheet-tab-inactive">② 出题规则</span>
+        <span class="sheet-tab sheet-tab-inactive">③ 考生名单</span>
+    </h3>
+    <p style="color: #666; font-size: 12px; margin: 2px 0 6px;">每行一场考试</p>
+    <table class="format-table">
+        <thead>
+            <tr>
+                <th>考试名称</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>考试时长(分钟)</th>
+                <th>总题数</th>
+                <th>总分</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>2026年船员履职技能大赛</td>
+                <td>2026-07-01 09:00</td>
+                <td>2026-07-01 17:00</td>
+                <td>120</td>
+                <td>100</td>
+                <td>100</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3 class="sheet-title"><span class="sheet-tab sheet-tab-inactive">① 考试基本信息</span>
+        <span class="sheet-tab">② 出题规则（透视表格式）</span>
+        <span class="sheet-tab sheet-tab-inactive">③ 考生名单</span>
+    </h3>
+    <p style="color: #666; font-size: 12px; margin: 2px 0 6px;">
+        每行一个章节，数字=抽题数量，空值/0=忽略。章节名称自动从数据库中查找。
+    </p>
+    <table class="format-table">
+        <thead>
+            <tr>
+                <th>名称</th>
+                <th>单选题</th>
+                <th>多选题</th>
+                <th>判断题</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>法律法规</td>
+                <td class="num"></td>
+                <td class="num"></td>
+                <td class="num">2</td>
+            </tr>
+            <tr>
+                <td>《中华人民共和国海上交通安全法》</td>
+                <td class="num">1</td>
+                <td class="num">1</td>
+                <td class="num"></td>
+            </tr>
+            <tr>
+                <td>《中华人民共和国内河交通安全管理条例》</td>
+                <td class="num">1</td>
+                <td class="num">1</td>
+                <td class="num"></td>
+            </tr>
+            <tr>
+                <td>《中华人民共和国船员条例》</td>
+                <td class="num">2</td>
+                <td class="num">1</td>
+                <td class="num"></td>
+            </tr>
+            <tr>
+                <td>《中华人民共和国船舶安全监督规则》</td>
+                <td class="num">2</td>
+                <td class="num">1</td>
+                <td class="num"></td>
+            </tr>
+        </tbody>
+    </table>
+    <p style="color: #999; font-size: 11px; margin-top: -12px;">
+        💡 也支持旧格式（所属章+题型+抽题数量），系统自动识别
+    </p>
+
+    <h3 class="sheet-title"><span class="sheet-tab sheet-tab-inactive">① 考试基本信息</span>
+        <span class="sheet-tab sheet-tab-inactive">② 出题规则</span>
+        <span class="sheet-tab">③ 考生名单</span>
+    </h3>
+    <p style="color: #666; font-size: 12px; margin: 2px 0 6px;">每行一个考生，自动关联 Sheet 1 的考试</p>
+    <table class="format-table">
+        <thead>
+            <tr>
+                <th>身份证号</th>
+                <th>姓名</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>441234199001011234</td>
+                <td>张三</td>
+            </tr>
+            <tr>
+                <td>441234199002021235</td>
+                <td>李四</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="upload-section">
+            <p style="font-size: 15px; margin: 0 0 8px;"><strong>选择 xlsx 文件上传</strong></p>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+            <br>
+            <button type="submit" class="submit-btn">🚀 开始导入</button>
+        </div>
+    </form>
+
+    <a href="{% url 'admin:exam_exam_changelist' %}" class="back-link">← 返回考试列表</a>
+</div>
+{% endblock %}

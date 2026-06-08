@@ -1,0 +1,163 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .import-container {
+            max-width: 860px;
+            margin: 20px auto;
+            padding: 24px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .import-container h2 {
+            margin-top: 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .format-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        .format-table th, .format-table td {
+            border: 1px solid #ddd;
+            padding: 8px 12px;
+            text-align: left;
+            font-size: 13px;
+        }
+        .format-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+        }
+        .format-table tr:nth-child(even) {
+            background: #fafafa;
+        }
+        .upload-section {
+            background: #f8f9fa;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            padding: 28px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .upload-section input[type="file"] {
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .upload-section .submit-btn {
+            display: inline-block;
+            padding: 10px 28px;
+            background: #417690;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .upload-section .submit-btn:hover {
+            background: #205067;
+        }
+        .note-box {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 4px;
+            padding: 12px 16px;
+            margin: 16px 0;
+            font-size: 13px;
+            color: #8c6e00;
+        }
+        .note-box strong {
+            color: #614700;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 16px;
+            color: #447e9b;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="import-container">
+    <h2>📥 批量导入章节</h2>
+
+    <div class="note-box">
+        <strong>⚠️ 导入规则：</strong>
+        <ul style="margin: 6px 0 0 16px; padding: 0;">
+            <li>相同名称的章节在同一层级下不会重复创建（已存在的章节会被复用）</li>
+            <li>嵌套关系由列决定：<strong>章</strong> → <strong>节</strong> → <strong>小节</strong></li>
+            <li>仅支持 <code>.xlsx</code> 格式</li>
+        </ul>
+    </div>
+
+    <h3 style="margin-bottom: 8px;">📋 Excel 文件格式要求</h3>
+    <p style="color: #666; font-size: 13px; margin: 0;">第一行为表头，数据从第二行开始。需要包含以下列：</p>
+    <table class="format-table">
+        <thead>
+            <tr>
+                <th>序号</th>
+                <th>章</th>
+                <th>节</th>
+                <th>小节</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>1</td>
+                <td>船员履职</td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>船员履职</td>
+                <td>岗位职责与值班</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>船员履职</td>
+                <td>航行和避让</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>船员履职</td>
+                <td>不同条件下引航</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>船员履职</td>
+                <td>不同条件下引航</td>
+                <td>弯曲河段引航</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>船员履职</td>
+                <td>不同条件下引航</td>
+                <td>浅滩河段引航</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="upload-section">
+            <p style="font-size: 15px; margin: 0 0 8px;"><strong>选择 xlsx 文件上传</strong></p>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+            <br>
+            <button type="submit" class="submit-btn">🚀 开始导入</button>
+        </div>
+    </form>
+
+    <a href="{% url 'admin:questions_chapter_changelist' %}" class="back-link">← 返回章节列表</a>
+</div>
+{% endblock %}

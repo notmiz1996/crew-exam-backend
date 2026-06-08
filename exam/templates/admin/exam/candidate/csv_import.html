@@ -1,0 +1,83 @@
+<!-- exam/templates/admin/exam/candidate/csv_import.html -->
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <style>
+    .preview-table { width: 100%; border-collapse: collapse; margin: 1em 0; }
+    .preview-table th, .preview-table td {
+      border: 1px solid #ddd; padding: 8px; text-align: left;
+    }
+    .preview-table th { background: #f5f5f5; font-weight: bold; }
+    .error-list { background: #fff0f0; border: 1px solid #e00; padding: 1em; margin: 1em 0; }
+    .success-box { background: #f0fff0; border: 1px solid #0a0; padding: 1em; margin: 1em 0; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+  <h1>{{ title }}</h1>
+
+  {% if show_confirm %}
+    <div class="success-box">
+      <strong>📄 文件解析完成</strong>
+      <p>共解析 <strong>{{ total }}</strong> 行数据</p>
+      {% if error_count > 0 %}
+        <p style="color: #c00;">格式错误：{{ error_count }} 行（已跳过）</p>
+      {% endif %}
+    </div>
+
+    {% if preview %}
+      <h3>预览（前10行）</h3>
+      <table class="preview-table">
+        <thead><tr><th>序号</th><th>身份证号</th><th>姓名</th></tr></thead>
+        <tbody>
+          {% for row in preview %}
+            <tr><td>{{ forloop.counter }}</td><td>{{ row.id_card }}</td><td>{{ row.name }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if error_details %}
+      <div class="error-list">
+        <strong>⚠️ 格式错误详情</strong>
+        <ul>{% for err in error_details %}<li>{{ err }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      <input type="hidden" name="confirm" value="1">
+      <div class="submit-row">
+        <input type="submit" value="✅ 确认导入 {{ total }} 条" class="default" style="background: #417690;">
+        <a href="." class="button cancel-link">取消返回</a>
+      </div>
+    </form>
+
+  {% else %}
+    <div style="background: #f8f8f8; border: 1px solid #ddd; padding: 1.5em; margin: 1em 0;">
+      <h3>📋 CSV 格式说明</h3>
+      <p>请上传 CSV 文件，每行一条考生记录：</p>
+      <code>
+        441202199001011234,张三<br>
+        441202199001011235,李四
+      </code>
+      <p style="margin-top: 1em; color: #666;">
+        ✅ 支持 utf-8 / utf-8-sig 编码<br>
+        ✅ 身份证号重复时自动跳过<br>
+        ✅ 支持批量导入，不受行数限制
+      </p>
+    </div>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <div class="submit-row">
+        <input type="submit" value="📄 解析并预览" class="default">
+        <a href=".." class="button cancel-link">返回考生列表</a>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}

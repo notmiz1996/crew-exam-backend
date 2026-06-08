@@ -1,0 +1,205 @@
+{% extends "admin/base_site.html" %}
+{% load i18n admin_urls static %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <style>
+        .import-container {
+            max-width: 960px;
+            margin: 20px auto;
+            padding: 24px;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .import-container h2 {
+            margin-top: 0;
+            padding-bottom: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        .format-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 12px;
+        }
+        .format-table th, .format-table td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        .format-table th {
+            background: #f5f5f5;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .format-table tr:nth-child(even) {
+            background: #fafafa;
+        }
+        .format-table td {
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .upload-section {
+            background: #f8f9fa;
+            border: 2px dashed #ccc;
+            border-radius: 6px;
+            padding: 28px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .upload-section input[type="file"] {
+            margin: 12px 0;
+            font-size: 14px;
+        }
+        .upload-section .submit-btn {
+            display: inline-block;
+            padding: 10px 28px;
+            background: #417690;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        .upload-section .submit-btn:hover {
+            background: #205067;
+        }
+        .note-box {
+            background: #fffbe6;
+            border: 1px solid #ffe58f;
+            border-radius: 4px;
+            padding: 12px 16px;
+            margin: 16px 0;
+            font-size: 13px;
+            color: #8c6e00;
+        }
+        .note-box strong {
+            color: #614700;
+        }
+        .back-link {
+            display: inline-block;
+            margin-top: 16px;
+            color: #447e9b;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .col-desc {
+            display: inline-block;
+            background: #e8f4f8;
+            border-radius: 3px;
+            padding: 1px 6px;
+            font-size: 11px;
+            color: #1a5a7a;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="import-container">
+    <h2>📥 批量导入题目</h2>
+
+    <div class="note-box">
+        <strong>⚠️ 导入规则：</strong>
+        <ul style="margin: 6px 0 0 16px; padding: 0;">
+            <li><strong>题目ID</strong> 可选：有则使用指定ID（已存在则跳过），无则自动生成</li>
+            <li><strong>题目类型</strong> 必须与系统中已添加的题型名称完全一致（单选题/多选题/判断题）</li>
+            <li><strong>所属章/节/小节</strong> 按名称自动匹配或创建（同层级同名不重复创建）</li>
+            <li><strong>正确答案</strong> 判断题写 A(正确) 或 B(错误)，多选题字母连续写如 ABCDEFG</li>
+            <li>仅支持 <code>.xlsx</code> 格式</li>
+        </ul>
+    </div>
+
+    <h3 style="margin-bottom: 8px;">📋 Excel 文件格式要求</h3>
+    <p style="color: #666; font-size: 13px; margin: 0;">第一行为表头，数据从第二行开始。必须包含以下列：</p>
+    <table class="format-table">
+        <thead>
+            <tr>
+                <th>题目ID</th>
+                <th>题目类型</th>
+                <th>所属章</th>
+                <th>所属节</th>
+                <th>所属小节</th>
+                <th>题干</th>
+                <th>选项A</th>
+                <th>选项B</th>
+                <th>选项C</th>
+                <th>选项D</th>
+                <th>选项E</th>
+                <th>选项F</th>
+                <th>选项G</th>
+                <th>正确答案</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>10001</td>
+                <td>单选题</td>
+                <td>法律法规</td>
+                <td>《中华人民共和国海上交通安全法》</td>
+                <td></td>
+                <td>船长在航行中死亡或者因故不能履行职责...</td>
+                <td>船东指定人员</td>
+                <td>驾驶员中职务最高的人</td>
+                <td>职务最高的人</td>
+                <td>船公司指定人员</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>B</td>
+            </tr>
+            <tr>
+                <td>10002</td>
+                <td>多选题</td>
+                <td>法律法规</td>
+                <td>《中华人民共和国海上交通安全法》</td>
+                <td></td>
+                <td>船舶进出港口、锚地或者通过________...</td>
+                <td>桥区水域</td>
+                <td>海峡</td>
+                <td>狭水道</td>
+                <td>重要渔业水域</td>
+                <td>通航船舶密集的区域</td>
+                <td>船舶定线区</td>
+                <td>交通管制区</td>
+                <td>ABCDEFG</td>
+            </tr>
+            <tr>
+                <td>10258</td>
+                <td>单选题</td>
+                <td>船员履职</td>
+                <td>不同条件下引航</td>
+                <td>弯曲河段引航</td>
+                <td>说法正确的是_______。</td>
+                <td>挂高只针对下行船而言</td>
+                <td>上行船只可沿凸岸航行</td>
+                <td>下行船不挂高可能导致"挖岸"</td>
+                <td>下行船也可利用"开门叫舵"</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>D</td>
+            </tr>
+        </tbody>
+    </table>
+    <p style="color: #999; font-size: 12px; margin-top: 4px;">
+        <span class="col-desc">🟢 必填</span> 题目类型、题干、正确答案
+        <span class="col-desc" style="margin-left: 16px;">🔵 可选</span> 题目ID（留空自动生成）
+    </p>
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="upload-section">
+            <p style="font-size: 15px; margin: 0 0 8px;"><strong>选择 xlsx 文件上传</strong></p>
+            <input type="file" name="excel_file" accept=".xlsx,.xls" required>
+            <br>
+            <button type="submit" class="submit-btn">🚀 开始导入</button>
+        </div>
+    </form>
+
+    <a href="{% url 'admin:questions_question_changelist' %}" class="back-link">← 返回题目列表</a>
+</div>
+{% endblock %}
