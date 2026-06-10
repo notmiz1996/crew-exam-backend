@@ -20,7 +20,7 @@
 import logging
 from typing import Optional
 
-from exam.models import ExamPaper, Answer
+from exam.models import ExamPaper, Answer, Exam
 from exam.utils.answer_mapping import (
     map_letter_to_text,
     map_multiple_letters_to_texts,
@@ -192,22 +192,37 @@ def grade_judgment(answer: Answer, epq) -> tuple[bool, int]:
 
     is_correct = selected_text == correct_text
     return is_correct, epq.score if is_correct else 0
-# def grade_judgment(answer: Answer, epq) -> tuple[bool, int]:
-#     """
-#     批改判断题
-#     """
-#     if answer.selected_answer is None:
-#         return False, 0
-#
-#     shuffled_options = epq.shuffled_options
-#     original_options = epq.question.options
-#
-#     correct_text = map_letter_to_text(original_options, epq.original_answer)
-#     selected_text = map_letter_to_text(shuffled_options, answer.selected_answer)
-#
-#     if correct_text is None or selected_text is None:
-#         logger.warning('判断题映射失败 | answer_id=%s', answer.id)
-#         return False, 0
-#
-#     is_correct = selected_text == correct_text
-#     return is_correct, epq.score if is_correct else 0
+
+
+def force_finish_exam_papers(exam, candidate=None):
+    """
+    强制交卷并批改指定考试中所有进行中的试卷
+    使用场景：
+    1. 考场关闭时（candidate_login 检测到 now > exam.end_time）
+    2. 定时任务（force_finish_expired_exams 管理命令）
+    参数：
+        exam: Exam 实例
+        candidate: 可选，指定考生则只处理该考生的试卷
+    返回：强制交卷并批改的试卷数量
+    """
+    filters = {'exam': exam, 'status': ExamPaper.Status.IN_PROGRESS}
+    if candidate is not None:
+        filters['candidate'] = candidate
+
+    papers = ExamPaper.objects.filter(**filters).select_related('exam', 'candidate')
+    count = 0
+    for paper in papers:
+        logger.info('强制交卷 | exam_paper_id=%s candidate=%s',
+                    paper.id, paper.candidate.name)
+        paper.status = ExamPaper.Status.FINISHED
+        paper.submitted_at = timezone.now()
+        paper.save(update_fields=['status', 'submitted_at'])
+        grade_paper(paper)
+        count += 1
+
+    if count > 0:
+        logger.info('强制交卷完成 | exam=%s count=%d', exam.name, count)
+        if candidate is None:  # 第1行：只有批量操作才改
+            exam.status = Exam.Status.FINISHED  # 第2行：把考试状态设为"已结束"
+            exam.save(update_fields=['status'])  # 第3行：保存到数据库
+    return count

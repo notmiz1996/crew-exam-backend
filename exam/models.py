@@ -21,18 +21,39 @@ from django.utils import timezone
 
 class Exam(models.Model):
     """
-    考试表
-    - 无显式状态字段，时间驱动判断（§3.2）
-    - 保存时自动触发出题规则校验（T-03.5）
+    考试表（T-03）
+    - 显式状态字段驱动业务流转
+    - PUBLISHED 状态下由时间控制（未开始/进行中/已结束）
     - 已组卷考试设为只读（P1-004）
     """
+
+    class Status(models.TextChoices):
+        DRAFT = 'draft', '草稿'
+        PUBLISHED = 'published', '已发布'
+        PAUSED = 'paused', '已暂停'
+        CANCELLED = 'cancelled', '已取消'
+        FINISHED = 'finished', '已结束'
+
     name = models.CharField('考试名称', max_length=128)
+    status = models.CharField(
+        '状态', max_length=16,
+        choices=Status.choices,
+        default=Status.DRAFT,
+        help_text='DRAFT=草稿 PUBLISHED=已发布 PAUSED=已暂停 '
+                 'CANCELLED=已取消 FINISHED=已结束',
+    )
     start_time = models.DateTimeField('开始时间')
     end_time = models.DateTimeField('结束时间')
-    duration_minutes = models.IntegerField('考试时长（分钟）',
-                                           help_text='考生实际答题时长，不得大于考试窗口')
+    duration_minutes = models.IntegerField(
+        '考试时长（分钟）',
+        help_text='考生实际答题时长，不得大于考试窗口',
+    )
     total_questions = models.IntegerField('总题数', default=100)
     total_score = models.IntegerField('总分', default=100)
+    passing_score = models.IntegerField(
+        '及格分数线', default=60,
+        help_text='考生达到此分数视为及格，默认 60 分',
+    )
     created_at = models.DateTimeField('创建时间', auto_now_add=True)
 
     class Meta:
@@ -49,11 +70,15 @@ class Exam(models.Model):
         if self.start_time and self.end_time:
             if self.end_time <= self.start_time:
                 raise ValidationError('结束时间必须晚于开始时间')
-            window_minutes = (self.end_time - self.start_time).total_seconds() / 60
+            window_minutes = (
+                (self.end_time - self.start_time).total_seconds() / 60
+            )
             if self.duration_minutes > window_minutes:
                 raise ValidationError({
-                    'duration_minutes': f'考试时长({self.duration_minutes}分钟)'
-                    f'不能超过考试窗口({int(window_minutes)}分钟)'
+                    'duration_minutes': (
+                        f'考试时长({self.duration_minutes}分钟)'
+                        f'不能超过考试窗口({int(window_minutes)}分钟)'
+                    ),
                 })
 
     def save(self, *args, **kwargs):
@@ -271,23 +296,3 @@ class Answer(models.Model):
     def __str__(self):
         status = '未作答' if self.selected_answer is None else self.selected_answer
         return f'{self.exam_paper_question} - {status}'
-
-    # def _check_readonly_before_save(self):
-    #     """
-    #     已组卷考试禁止修改（P1-004 模型层只读保护）
-    #     检查条件：只要该考试存在任何 ExamPaper 记录，即视为已组卷
-    #     """
-    #     if self.pk is None:
-    #         return  # 新建考试，允许保存
-    #
-    #     if ExamPaper.objects.filter(exam=self).exists():
-    #         raise ValidationError(
-    #             f'考试「{self.name}」已组卷，不允许修改基本信息。'
-    #             '如需修改请先清空试卷记录。'
-    #         )
-    #
-    # def save(self, *args, **kwargs):
-    #     """保存时先校验+只读检查，再保存"""
-    #     self.clean()
-    #     self._check_readonly_before_save()
-    #     super().save(*args, **kwargs)

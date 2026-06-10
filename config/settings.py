@@ -34,6 +34,8 @@ INSTALLED_APPS = [
     'exam',
     # 跨域
     'corsheaders',
+    # 定时
+    'django_q',
 ]
 
 MIDDLEWARE = [
@@ -195,3 +197,17 @@ CORS_ALLOW_HEADERS = [
     'origin',
     'x-requested-with',
 ]
+
+# 定时任务设置
+Q_CLUSTER = {
+    'name': 'crew_exam',
+    'workers': 1,                # SQLite 仅建议单 worker
+    'timeout': 120,              # 任务超时秒数
+    'retry': 60,                 # 重试间隔
+    'compress': True,            # 压缩传输
+    'save_limit': 250,           # 保存最近 250 条执行记录
+    'queue_limit': 10,           # 队列上限
+    'orm': 'default',            # 使用 ORM 作为 broker（兼容 SQLite）
+    'poll': 10,                  # 轮询间隔（秒），10 秒检查一次队列
+    'label': 'Django Q',
+}
