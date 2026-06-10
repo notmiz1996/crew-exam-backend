@@ -30,7 +30,7 @@ class Exam(models.Model):
     class Status(models.TextChoices):
         DRAFT = 'draft', '草稿'
         PUBLISHED = 'published', '已发布'
-        PAUSED = 'paused', '已暂停'
+        PAUSED = 'paused', '暂停中'
         CANCELLED = 'cancelled', '已取消'
         FINISHED = 'finished', '已结束'
 

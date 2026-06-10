@@ -3,6 +3,8 @@
 """
 DRF 序列化器（§4.7 API Schema）
 """
+import re
+
 from rest_framework import serializers
 from .models import Exam, ExamPaper, ExamPaperQuestion, Answer
 
@@ -112,3 +114,25 @@ class ResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = ExamPaper
         fields = ['total_score', 'submitted_at']
+
+
+class CandidateVerifySerializer(serializers.Serializer):
+    """
+    考生身份验证入参序列化器
+    - 校验身份证号格式
+    - 查找考生是否存在
+    """
+    id_card = serializers.CharField(
+        label='身份证号', max_length=18,
+        help_text='18位身份证号（末位可为X）',
+    )
+
+    def validate_id_card(self, value):
+        """校验身份证格式（复用 Model 的正则）"""
+        if not re.match(
+            r'^[1-9]\d{5}(19|20)\d{2}(0[1-9]|1[0-2])'
+            r'(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$',
+            value,
+        ):
+            raise serializers.ValidationError('身份证号格式不正确')
+        return value.upper()  # 统一转大写 X

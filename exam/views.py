@@ -12,7 +12,7 @@ from rest_framework.views import APIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from .models import Exam, ExamPaper, ExamPaperQuestion, Answer, Candidate, ExamCandidate
-from .serializers import ExamListSerializer, success_response, error_response
+from .serializers import ExamListSerializer, success_response, error_response, CandidateVerifySerializer
 from .authentication import ExamJWTAuthentication, generate_token
 from .services.grading import grade_paper, force_finish_exam_papers
 
@@ -22,6 +22,88 @@ logger = logging.getLogger('exam')
 # ============================================================
 # 公共接口（无需认证）
 # ============================================================
+class CandidateVerifyView(APIView):
+    """
+    POST /api/candidates/verify/
+
+    考生身份证验证 → 返回考生信息 + 待参加考试列表
+
+    流程：
+      1. 校验身份证号格式（18位）
+      2. 查找 Candidate 记录
+      3. 查找该考生报名的考试（通过 ExamCandidate）
+      4. 仅返回未结束（PUBLISHED 且 end_time > now）的考试
+      5. 标记每场考试的考生参与状态
+    """
+    authentication_classes = []  # 无需登录即可查询
+    permission_classes = [AllowAny]  # 公开接口
+
+    def post(self, request):
+        serializer = CandidateVerifySerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        id_card = serializer.validated_data['id_card']
+
+        # ── 1. 查找考生 ──
+        try:
+            candidate = Candidate.objects.get(id_card=id_card)
+        except Candidate.DoesNotExist:
+            return Response(
+                {'error': '未找到该考生信息，请确认身份证号是否正确'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # ── 2. 查找该考生的考试报名记录 ──
+        #    通过 ExamCandidate 查考试，带上 exam_paper 信息
+        now = timezone.now()
+        ec_qs = (
+            ExamCandidate.objects
+            .filter(candidate=candidate)
+            .select_related('exam', 'exam_paper')
+            .order_by('exam__start_time')
+        )
+
+        exams_data = []
+        for ec in ec_qs:
+            exam = ec.exam
+
+            # 只展示"未结束"的考试：PUBLISHED 状态 + 结束时间未过
+            if exam.status != Exam.Status.PUBLISHED:
+                continue
+            if exam.end_time <= now:
+                continue
+
+            # 判断该考生对这场考试的参与状态
+            paper = ec.exam_paper
+            if paper is None:
+                candidate_status = 'not_started'  # 未开始
+            elif paper.status == ExamPaper.Status.IN_PROGRESS:
+                candidate_status = 'in_progress'  # 考试中
+            elif paper.status == ExamPaper.Status.FINISHED:
+                candidate_status = 'finished'  # 已交卷
+            else:
+                candidate_status = 'not_started'
+
+            exams_data.append({
+                'id': exam.id,
+                'name': exam.name,
+                'start_time': exam.start_time.strftime('%Y-%m-%d %H:%M'),
+                'end_time': exam.end_time.strftime('%Y-%m-%d %H:%M'),
+                'duration_minutes': exam.duration_minutes,
+                'total_questions': exam.total_questions,
+                'total_score': exam.total_score,
+                'passing_score': exam.passing_score,
+                'candidate_status': candidate_status,
+            })
+
+        # ── 3. 组装返回 ──
+        return Response({
+            'candidate': {
+                'id': candidate.id,
+                'name': candidate.name,
+                'id_card': candidate.id_card,
+            },
+            'exams': exams_data,
+        })
 
 class ExamListView(APIView):
     """GET /api/exams/ — 考试列表"""
@@ -29,7 +111,7 @@ class ExamListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, format=None):
-        exams = Exam.objects.all().order_by('-start_time')
+        exams = Exam.objects.filter(status=Exam.Status.PUBLISHED).order_by('-start_time')
         serializer = ExamListSerializer(exams, many=True)
         logger.info('考试列表访问 | count=%d', exams.count())
         return Response(success_response(serializer.data))

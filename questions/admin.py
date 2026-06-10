@@ -22,6 +22,8 @@ try:
 except ImportError:
     openpyxl = None
 
+admin.site.site_title="机考管理平台"
+admin.site.site_header = "技能大赛机考管理平台"
 
 @admin.register(QuestionType)
 class QuestionTypeAdmin(admin.ModelAdmin):

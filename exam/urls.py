@@ -8,9 +8,9 @@ from . import views
 
 urlpatterns = [
     # 公共接口
-    path('exams/', views.ExamListView.as_view(), name='exam-list'),
+    # path('exams/', views.ExamListView.as_view(), name='exam-list'),
     path('exams/<int:exam_id>/login/', views.CandidateLoginView.as_view(), name='candidate-login'),
-
+    path('candidates/verify/', views.CandidateVerifyView.as_view(), name='candidate-verify'),
     # 考生认证接口
     path('exams/<int:exam_id>/paper/', views.GetPaperView.as_view(), name='get-paper'),
     path('exams/<int:exam_id>/paper/status/', views.PaperStatusView.as_view(), name='paper-status'),

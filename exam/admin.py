@@ -8,6 +8,7 @@
 - T-11：成绩导出 Action
 - T-12：Admin UI 只读控制
 """
+import re
 import csv
 import io
 import logging
@@ -19,7 +20,12 @@ from django.http import HttpResponse
 from django.contrib import messages
 from django.template.response import TemplateResponse
 from django.utils.html import format_html
+from django.utils import timezone
 from django.http import HttpResponseRedirect
+
+import openpyxl
+from openpyxl.styles import Font, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 from .models import (
     Exam, QuestionRule, Candidate, ExamCandidate,
@@ -30,10 +36,6 @@ from .services.grading import force_finish_exam_papers
 
 logger = logging.getLogger('exam')
 
-try:
-    import openpyxl
-except ImportError:
-    openpyxl = None
 
 
 class QuestionRuleInline(admin.TabularInline):
@@ -100,7 +102,7 @@ class ExamAdmin(admin.ModelAdmin):
         }),
     )
 
-    actions = ['generate_papers', 'export_scores_csv', 'force_finish_expired']
+    actions = ['generate_papers', 'export_scores_xlsx', 'force_finish_expired']
 
     def get_readonly_fields(self, request, obj=None):
         readonly = super().get_readonly_fields(request, obj)
@@ -151,27 +153,151 @@ class ExamAdmin(admin.ModelAdmin):
                     level='ERROR',
                 )
 
-    @admin.action(description='📊 导出成绩CSV')
-    def export_scores_csv(self, request, queryset):
-        response = HttpResponse(content_type='text/csv; charset=utf-8-sig')
-        response['Content-Disposition'] = 'attachment; filename="exam_scores.csv"'
-        writer = csv.writer(response)
-        writer.writerow(['序号', '姓名', '身份证号', '总分', '及格', '交卷时间'])
-        row_num = 1
+    @admin.action(description='📊 导出成绩XLSX')
+    def export_scores_xlsx(self, request, queryset):
+        """
+        导出已结束考试的全部考生成绩为 .xlsx
+        - 仅导出考试状态为 FINISHED 的考试
+        - 每位考生一行：序号、姓名、身份证号、总分、及格、状态、交卷时间
+        """
+        import openpyxl
+        from openpyxl.styles import Font, Alignment, Border, Side
+        from django.utils import timezone
+        import re
+
+        # ── 1. 区分已结束 vs 未结束的考试 ──
+        finished_exams = []  # 可以导出的
+        skipped_names = []  # 要跳过的
+
         for exam in queryset:
-            papers = ExamPaper.objects.filter(exam=exam, status='finished') \
-                .select_related('candidate').order_by('submitted_at')
-            for paper in papers:
-                score = float(paper.total_score) if paper.total_score else 0
-                passed = '是' if score >= float(exam.passing_score) else '否'
-                writer.writerow([
-                    row_num, paper.candidate.name, paper.candidate.id_card,
-                    score, passed,
-                    paper.submitted_at.strftime('%Y-%m-%d %H:%M:%S') if paper.submitted_at else '',
-                ])
+            if exam.status == Exam.Status.FINISHED:
+                finished_exams.append(exam)
+            else:
+                skipped_names.append(exam.name)
+
+        if not finished_exams:
+            self.message_user(
+                request,
+                '⚠️ 所选考试均未结束，无法导出成绩。'
+                '请先结束考试后再导出。',
+                level='WARNING',
+            )
+            return
+
+        # ── 2. 创建工作簿 ──
+        wb = openpyxl.Workbook()
+
+        # 表头样式
+        header_font = Font(bold=True, size=11)
+        header_align = Alignment(horizontal='center', vertical='center')
+        thin_border = Border(
+            left=Side(style='thin'),
+            right=Side(style='thin'),
+            top=Side(style='thin'),
+            bottom=Side(style='thin'),
+        )
+        headers = ['序号', '姓名', '身份证号', '总分', '及格', '状态', '交卷时间']
+
+        total_rows = 0
+
+        for exam in finished_exams:
+            # 每个考试一个 Sheet，Sheet 名取考试名称（截断防超长）
+            sheet_name = exam.name[:31]  # Excel Sheet 名最多 31 字符
+            ws = wb.active if finished_exams.index(exam) == 0 else wb.create_sheet()
+            ws.title = sheet_name
+
+            # 写入表头
+            for col_idx, header in enumerate(headers, start=1):
+                cell = ws.cell(row=1, column=col_idx, value=header)
+                cell.font = header_font
+                cell.alignment = header_align
+                cell.border = thin_border
+
+            # ── 3. 查询该考试的全部考生（通过 ExamCandidate） ──
+            candidates = (
+                ExamCandidate.objects
+                .filter(exam=exam)
+                .select_related('candidate', 'exam_paper')
+                .order_by('candidate__name')
+            )
+
+            row_num = 1
+            for ec in candidates:
                 row_num += 1
-        self.message_user(request, f'✅ 已导出 {row_num - 1} 条成绩记录', level='SUCCESS')
+
+                # 确定状态、分数、交卷时间
+                paper = ec.exam_paper
+                if paper is None:
+                    status_text = '缺考'
+                    score = 0
+                    submitted_at = ''
+                elif paper.status == ExamPaper.Status.FINISHED:
+                    status_text = '已交卷'
+                    score = float(paper.total_score) if paper.total_score else 0
+                    submitted_at = (
+                        paper.submitted_at.strftime('%Y-%m-%d %H:%M:%S')
+                        if paper.submitted_at else ''
+                    )
+                else:
+                    status_text = '缺考'
+                    score = 0
+                    submitted_at = ''
+
+                passed = '是' if score >= float(exam.passing_score) else '否'
+
+                values = [
+                    row_num - 1,
+                    ec.candidate.name,
+                    ec.candidate.id_card,
+                    score,
+                    passed,
+                    status_text,
+                    submitted_at,
+                ]
+
+                for col_idx, val in enumerate(values, start=1):
+                    cell = ws.cell(row=row_num, column=col_idx, value=val)
+                    cell.border = thin_border
+
+                total_rows += 1
+
+            # 自适应列宽（取表头和数据的最大长度）
+            for col_idx in range(1, len(headers) + 1):
+                max_len = len(str(ws.cell(row=1, column=col_idx).value))
+                for r in range(2, row_num + 1):
+                    cell_val = ws.cell(row=r, column=col_idx).value
+                    if cell_val is not None:
+                        # 中文字符按 2 倍宽度估算
+                        val_len = sum(2 if ord(c) > 127 else 1 for c in str(cell_val))
+                        max_len = max(max_len, val_len)
+                ws.column_dimensions[get_column_letter(col_idx)].width = max_len + 3
+
+        # ── 4. 生成响应 ──
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+
+        # 文件名
+        timestamp = timezone.localtime().strftime('%Y%m%d_%H%M%S')
+        if len(finished_exams) == 1:
+            # 单场考试：用考试名称
+            safe_name = re.sub(r'[\\/:*?"<>|]', '_', finished_exams[0].name)
+            filename = f'{safe_name}_{timestamp}.xlsx'
+        else:
+            filename = f'考试成绩汇总_{timestamp}.xlsx'
+
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+
+        # ── 5. 消息提示 ──
+        msg_parts = [f'✅ 已导出 {total_rows} 条成绩记录']
+        if skipped_names:
+            msg_parts.append(f'⚠️ 以下考试尚未结束，已跳过：{", ".join(skipped_names)}')
+        self.message_user(request, ' | '.join(msg_parts), level='SUCCESS')
+
         return response
+
+    export_scores_xlsx.short_description = '📊 导出成绩XLSX'
 
     @admin.action(description='⏰ 结束考试')
     def force_finish_expired(self, request, queryset):
